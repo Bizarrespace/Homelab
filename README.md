@@ -13,6 +13,7 @@ Storage: 256 GB NVMe SSD
 Network:	USB 3.0 gigabit ethernet adapter (no onboard NIC)
 
 # Architecture
+```text
 Internet
    │
    └── Router (192.168.50.1)  ─ DHCP, hands out Pi-hole as primary DNS
@@ -23,7 +24,7 @@ Internet
                         ├── vmbr0 (Linux bridge)
                         ├── VM 100 — Ubuntu Server 24.04 LTS
                         └── CT 101 — Debian 12 / Pi-hole (192.168.50.201)
-
+```
 
 # Components
 - Proxmox VE (Host)
@@ -64,18 +65,21 @@ Verified by deleting the source directory and restoring it from the archive.
 # Problems that I worked through
 
 # Bridge bound to a nonexistent interface
-**Symptom** Proxmox installed successfully, but the web interface was unreachable from any other machine on the network
-**Investigation**. ip a at the console showed vmbr0 holding the correct static address and marked UP, so the configuration appeared correct. However, the wireless interface was DOWN and no wired interface was listed at all. 
-**Cause** The host's wireless chipset requires firmware not included in Proxmox's Debian base, so it never came up. And with no network interface present at install time, the installer had written a placeholder name into bridge-ports. The bridge held a valid IP address while being bound to an interface that did not exist. 
-**Solution** Added a USB ethernet adapter using Realtek chipset, which is supported by kernel driver and requires no addition configuration. Brought up interface with ip link set, then updated both the iface declaration and bridge-ports to refernce the real interface name and restarted networking. 
+- **Symptom** Proxmox installed successfully, but the web interface was unreachable from any other machine on the network
+
+- **Investigation**. ip a at the console showed vmbr0 holding the correct static address and marked UP, so the configuration appeared correct. However, the wireless interface was DOWN and no wired interface was listed at all. 
+
+- **Cause** The host's wireless chipset requires firmware not included in Proxmox's Debian base, so it never came up. And with no network interface present at install time, the installer had written a placeholder name into bridge-ports. The bridge held a valid IP address while being bound to an interface that did not exist. 
+
+- **Solution** Added a USB ethernet adapter using Realtek chipset, which is supported by kernel driver and requires no addition configuration. Brought up interface with ip link set, then updated both the iface declaration and bridge-ports to refernce the real interface name and restarted networking. 
 
 # Container service failing with 226/NAMESPACE
 
-**Symptom** Pi-hole installed without error, but pihole-FTL.service would not start. systemctl status showed Active: failed, exit code 226/NAMESPACE, and the unit had exceeded systemd's start rate limit. 
+- **Symptom** Pi-hole installed without error, but pihole-FTL.service would not start. systemctl status showed Active: failed, exit code 226/NAMESPACE, and the unit had exceeded systemd's start rate limit. 
 
-**Investigation** journalctl -u pihole-FTL gave the specific failure. "Failed to set up mount namespacing Permission denied, occurring at step NAMESPACE before the service's prestart script could execute. 
+- **Investigation** journalctl -u pihole-FTL gave the specific failure. "Failed to set up mount namespacing Permission denied, occurring at step NAMESPACE before the service's prestart script could execute. 
 
-**Actual cause** I assumed the container was unprivileged. pct config confirmed it was not. What it lacked was the nesting feature flag. In Proxmox, running a container priviledged and permitting it to create namespaces are separate settings, and namespace creation was what the error was referring to. Turning on the nesting feature flag allowed pi-hole to work properly as it was a container not a VM so it needed the feature to do kernel level things. 
+- **Actual cause** I assumed the container was unprivileged. pct config confirmed it was not. What it lacked was the nesting feature flag. In Proxmox, running a container priviledged and permitting it to create namespaces are separate settings, and namespace creation was what the error was referring to. Turning on the nesting feature flag allowed pi-hole to work properly as it was a container not a VM so it needed the feature to do kernel level things. 
 
 # Limitations of the project so far
 - Single node. No clustering, no high availability, no shared storage.
